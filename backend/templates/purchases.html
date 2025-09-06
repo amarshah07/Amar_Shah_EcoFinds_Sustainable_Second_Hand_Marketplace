@@ -1,0 +1,13 @@
+{% extends 'base.html' %}
+{% block content %}
+<h3>Previous Purchases</h3>
+<ul class="list-group">
+  {% for r in records %}
+    <li class="list-group-item">
+      <strong>{{ r.product.title }}</strong> — Purchased on {{ r.purchased_at.strftime('%Y-%m-%d %H:%M') }}
+    </li>
+  {% else %}
+    <li class="list-group-item">No purchases yet.</li>
+  {% endfor %}
+</ul>
+{% endblock %}

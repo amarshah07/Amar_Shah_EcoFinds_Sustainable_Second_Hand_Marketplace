@@ -1,0 +1,15 @@
+{% extends 'base.html' %}
+{% block content %}
+<h3>My Profile</h3>
+<form method="post" class="col-md-6">
+  <div class="mb-3">
+    <label>Email</label>
+    <input class="form-control" value="{{ user.email }}" disabled>
+  </div>
+  <div class="mb-3">
+    <label>Username</label>
+    <input name="username" class="form-control" value="{{ user.username }}">
+  </div>
+  <button class="btn btn-primary">Update</button>
+</form>
+{% endblock %}

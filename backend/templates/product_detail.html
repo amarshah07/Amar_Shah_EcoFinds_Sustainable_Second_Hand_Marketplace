@@ -1,0 +1,19 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="row">
+  <div class="col-md-6">
+    <img src="{{ url_for('static', filename='images/' ~ product.image_url) }}" class="img-fluid">
+  </div>
+  <div class="col-md-6">
+    <h3>{{ product.title }}</h3>
+    <p>Category: {{ product.category }}</p>
+    <p>Price: ₹ {{ product.price }}</p>
+    <p>{{ product.description }}</p>
+    {% if session.get('user_id') %}
+      <form method="post" action="{{ url_for('add_to_cart', pid=product.id) }}">
+        <button class="btn btn-success">Add to Cart</button>
+      </form>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

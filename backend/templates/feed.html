@@ -1,0 +1,50 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h3>Product Feed</h3>
+  {% if session.get('user_id') %}
+    <a class="btn btn-primary" href="{{ url_for('add_product') }}">+ Add Product</a>
+  {% endif %}
+</div>
+
+<form class="row g-2 mb-3" method="get">
+  <div class="col-md-4">
+    <input class="form-control" name="search" placeholder="Search title..." value="{{ search or '' }}">
+  </div>
+  <div class="col-md-3">
+    <select class="form-select" name="category">
+      <option value="">All Categories</option>
+      {% for c in categories %}
+        <option value="{{c}}" {% if selected_category==c %}selected{% endif %}>{{ c }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-auto">
+    <button class="btn btn-outline-primary">Filter</button>
+  </div>
+</form>
+
+<div class="row">
+  {% for p in products %}
+    <div class="col-md-4 mb-3">
+      <div class="card h-100">
+        <img src="{{ url_for('static', filename='images/' ~ p.image_url) }}" class="card-img-top" style="height:180px; object-fit:cover;">
+        <div class="card-body">
+          <h5 class="card-title">{{ p.title }}</h5>
+          <p class="card-text">₹ {{ p.price }}</p>
+          <a href="{{ url_for('product_detail', pid=p.id) }}" class="btn btn-sm btn-outline-primary">View</a>
+          {% if session.get('user_id') %}
+            <form method="post" action="{{ url_for('add_to_cart', pid=p.id) }}" style="display:inline;">
+              <button class="btn btn-sm btn-success">Add to cart</button>
+            </form>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  {% else %}
+    <div class="col-12">
+      <p>No products found.</p>
+    </div>
+  {% endfor %}
+</div>
+{% endblock %}

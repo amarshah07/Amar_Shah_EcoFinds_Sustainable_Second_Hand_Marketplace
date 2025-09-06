@@ -1,0 +1,31 @@
+{% extends 'base.html' %}
+{% block content %}
+<h3>{{ 'Edit Product' if edit else 'Add New Product' }}</h3>
+<form method="post" class="col-md-8">
+  <div class="mb-3">
+    <label>Title</label>
+    <input name="title" class="form-control" value="{{ product.title if edit else '' }}" required>
+  </div>
+  <div class="mb-3">
+    <label>Category</label>
+    <select name="category" class="form-select">
+      {% for c in categories %}
+        <option value="{{c}}" {% if edit and product.category==c %}selected{% endif %}>{{c}}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="mb-3">
+    <label>Description</label>
+    <textarea name="description" class="form-control">{{ product.description if edit else '' }}</textarea>
+  </div>
+  <div class="mb-3">
+    <label>Price</label>
+    <input name="price" type="number" step="0.01" class="form-control" value="{{ product.price if edit else '' }}" required>
+  </div>
+  <div class="mb-3">
+    <label>Image</label>
+    <p>(Placeholder used in this prototype)</p>
+  </div>
+  <button class="btn btn-success">Submit Listing</button>
+</form>
+{% endblock %}
