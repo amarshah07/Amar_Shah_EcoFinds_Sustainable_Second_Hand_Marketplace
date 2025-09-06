@@ -1,23 +1,31 @@
-# backend/app.py
 import re
 import os
 from decimal import Decimal
 from flask import Flask, render_template, request, redirect, url_for, session, flash
 from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
 from models import db, User, Product, Cart, Purchase
 from sqlalchemy import or_
+from datetime import datetime
+from decimal import InvalidOperation
 
 load_dotenv()
+
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg'}
+UPLOAD_FOLDER = 'static'  # Save images to static/
+MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB
+
+
 
 def create_app():
     app = Flask(__name__, template_folder='templates', static_folder='static')
     app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL')
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'devsecret')
+    app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
     db.init_app(app)
 
-    # ✅ Create tables at startup (Flask 3.x compatible)
     with app.app_context():
         db.create_all()
 
@@ -25,10 +33,12 @@ def create_app():
 
 app = create_app()
 
-# Predefined categories (used by forms)
 CATEGORIES = ['Clothing', 'Electronics', 'Books', 'Furniture', 'Accessories', 'Other']
 
 EMAIL_REGEX = re.compile(r"[^@]+@[^@]+\.[^@]+")
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 def login_required(f):
     from functools import wraps
@@ -39,8 +49,6 @@ def login_required(f):
             return redirect(url_for('login'))
         return f(*args, **kwargs)
     return wrapped
-
-# ⚡ Removed @app.before_first_request (not needed anymore)
 
 @app.route('/')
 def feed():
@@ -101,18 +109,36 @@ def add_product():
         category = request.form.get('category')
         description = request.form.get('description','').strip()
         price_raw = request.form.get('price','0').strip()
-        # validations
+        image = request.files.get('image')
+
+        # Validations
         if not title:
             flash('Title required.', 'danger'); return redirect(url_for('add_product'))
         try:
             price = Decimal(price_raw)
             if price < 0:
-                raise Exception()
-        except:
-            flash('Invalid price.', 'danger'); return redirect(url_for('add_product'))
+                raise ValueError()
+        except (ValueError, InvalidOperation):
+            flash('Invalid price. Must be a positive number.', 'danger'); return redirect(url_for('add_product'))
         if category not in CATEGORIES:
             category = 'Other'
-        image_url = 'placeholder.png'  # placeholder approach for hackathon
+
+        # Image handling - store full path
+        image_url = 'static/placeholder.png'  # Default
+        if image and image.filename != '':
+            if image.content_length > MAX_FILE_SIZE:
+                flash('Image file too large. Maximum size is 5MB.', 'danger')
+                return redirect(url_for('add_product'))
+            if not allowed_file(image.filename):
+                flash('Invalid image format. Allowed types: png, jpg, jpeg.', 'danger')
+                return redirect(url_for('add_product'))
+            filename = secure_filename(image.filename)
+            base, ext = os.path.splitext(filename)
+            filename = f"{base}_{int(datetime.utcnow().timestamp())}{ext}"
+            image_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            image.save(image_path)
+            image_url = os.path.join('static', filename).replace('\\', '/')
+
         p = Product(user_id=session['user_id'], title=title, description=description, category=category, price=price, image_url=image_url)
         db.session.add(p); db.session.commit()
         flash('Product listed.', 'success')
@@ -128,13 +154,13 @@ def product_detail(pid):
 @login_required
 def my_listings():
     products = Product.query.filter_by(user_id=session['user_id']).order_by(Product.created_at.desc()).all()
-    
-    # Fetch orders for each product
     products_with_orders = []
     for p in products:
         orders = Purchase.query.filter_by(product_id=p.id).order_by(Purchase.purchased_at.desc()).all()
-        products_with_orders.append({'product': p, 'orders': orders})
-    
+        products_with_orders.append({
+            'product': p,
+            'orders': orders
+        })
     return render_template('my_listings.html', products_with_orders=products_with_orders)
 
 
@@ -150,8 +176,32 @@ def edit_product(pid):
         p.category = request.form.get('category', p.category)
         try:
             p.price = Decimal(request.form.get('price', p.price))
-        except:
-            flash('Invalid price'); return redirect(url_for('edit_product', pid=pid))
+            if p.price < 0:
+                raise ValueError()
+        except (ValueError, InvalidOperation):
+            flash('Invalid price. Must be a positive number.', 'danger'); return redirect(url_for('edit_product', pid=pid))
+        
+        # Image handling - store full path
+        image = request.files.get('image')
+        if image and image.filename != '':
+            if image.content_length > MAX_FILE_SIZE:
+                flash('Image file too large. Maximum size is 5MB.', 'danger')
+                return redirect(url_for('edit_product', pid=pid))
+            if not allowed_file(image.filename):
+                flash('Invalid image format. Allowed types: png, jpg, jpeg.', 'danger')
+                return redirect(url_for('edit_product', pid=pid))
+            filename = secure_filename(image.filename)
+            base, ext = os.path.splitext(filename)
+            filename = f"{base}_{int(datetime.utcnow().timestamp())}{ext}"
+            image_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            image.save(image_path)
+            # Delete old image if not default
+            if p.image_url != 'static/placeholder.png':
+                old_image_path = os.path.join(app.root_path, p.image_url)
+                if os.path.exists(old_image_path):
+                    os.remove(old_image_path)
+            p.image_url = os.path.join('static', filename).replace('\\', '/')
+
         db.session.commit()
         flash('Listing updated.', 'success'); return redirect(url_for('my_listings'))
     return render_template('add_product.html', edit=True, product=p, categories=CATEGORIES)
@@ -162,6 +212,11 @@ def delete_product(pid):
     p = Product.query.get_or_404(pid)
     if p.user_id != session['user_id']:
         flash('Not allowed.', 'danger'); return redirect(url_for('feed'))
+    # Delete image if not default
+    if p.image_url != 'static/placeholder.png':
+        image_path = os.path.join(app.root_path, p.image_url)
+        if os.path.exists(image_path):
+            os.remove(image_path)
     db.session.delete(p); db.session.commit()
     flash('Product deleted.', 'info')
     return redirect(url_for('my_listings'))
@@ -183,8 +238,36 @@ def add_to_cart(pid):
 @login_required
 def view_cart():
     items = Cart.query.filter_by(user_id=session['user_id']).all()
-    # product info available via relationship
     return render_template('cart.html', items=items)
+
+
+# In your app.py, the checkout route should look like this:
+@app.route('/checkout', methods=['GET', 'POST'])
+@login_required
+def checkout():
+    items = Cart.query.filter_by(user_id=session['user_id']).all()
+    if request.method == 'POST':
+        address = request.form.get('address')
+        if not address:
+            flash("Please provide a delivery address to complete your order.", 'danger')
+            # Redirect to the checkout page to show the error
+            return redirect(url_for('checkout')) 
+
+        if not items:
+            flash("Your cart is empty.", "warning")
+            return redirect(url_for('feed'))
+
+        for it in items:
+            p = Purchase(user_id=session['user_id'], product_id=it.product_id, address=address)
+            db.session.add(p)
+            db.session.delete(it)
+        db.session.commit()
+        
+        flash('Checkout complete. Purchases recorded.', 'success')
+        return redirect(url_for('purchases'))
+    
+    # This renders the checkout page on a GET request
+    return render_template('checkout.html', items=items)
 
 @app.route('/cart/remove/<int:cid>', methods=['POST'])
 @login_required
@@ -194,40 +277,6 @@ def remove_cart(cid):
         flash('Not allowed', 'danger'); return redirect(url_for('view_cart'))
     db.session.delete(it); db.session.commit()
     flash('Removed from cart', 'info'); return redirect(url_for('view_cart'))
-
-@app.route('/checkout', methods=['GET', 'POST'])
-@login_required
-def checkout():
-    cart_items = Cart.query.filter_by(user_id=session['user_id']).all()
-
-    if not cart_items:
-        flash('Your cart is empty!', 'warning')
-        return redirect(url_for('feed'))
-
-    if request.method == 'POST':
-        address = request.form.get('address')
-        if not address:
-            flash('Address is required!', 'danger')
-            return redirect(url_for('checkout'))
-
-        # create purchase record for each cart item
-        for item in cart_items:
-            purchase = Purchase(
-                user_id=session['user_id'],
-                product_id=item.product_id,
-                address=address
-            )
-            db.session.add(purchase)
-
-        # clear cart after checkout
-        Cart.query.filter_by(user_id=session['user_id']).delete()
-        db.session.commit()
-
-        flash('Order placed successfully!', 'success')
-        return redirect(url_for('purchases'))
-
-    return render_template('checkout.html', items=cart_items)
-
 
 
 @app.route('/purchases')
@@ -240,10 +289,6 @@ def purchases():
 @login_required
 def dashboard():
     user = User.query.get_or_404(session['user_id'])
-    
-    # Fetch all purchases of this user, newest first
-    orders = Purchase.query.filter_by(user_id=user.id).order_by(Purchase.purchased_at.desc()).all()
-
     if request.method == 'POST':
         username = request.form.get('username','').strip()
         if not username:
@@ -253,39 +298,7 @@ def dashboard():
         db.session.commit()
         flash('Profile updated', 'success')
         return redirect(url_for('dashboard'))
-
-    return render_template('dashboard.html', user=user, orders=orders)
-
-
-@app.route('/order/<int:purchase_id>/update', methods=['POST'])
-@login_required
-def update_order_status(purchase_id):
-    purchase = Purchase.query.get_or_404(purchase_id)
-    
-    # Only the owner of the product can update the order
-    if purchase.product.user_id != session['user_id']:
-        flash('Not allowed.', 'danger')
-        return redirect(url_for('my_listings'))
-    
-    status = request.form.get('status')
-    if status:
-        purchase.status = status  # we need to add this field in Purchase model
-        db.session.commit()
-        flash('Order status updated.', 'success')
-    
-    return redirect(url_for('my_listings'))
-
-
-@app.route('/my-orders')
-@login_required
-def my_orders():
-    # Fetch all purchases for the logged-in user, newest first
-    purchases = Purchase.query.filter_by(user_id=session['user_id']).order_by(Purchase.purchased_at.desc()).all()
-    return render_template('my_orders.html', purchases=purchases)
-
-
-
-
+    return render_template('dashboard.html', user=user)
 
 if __name__ == '__main__':
     app.run(debug=True)
