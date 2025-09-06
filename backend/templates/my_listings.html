@@ -1,23 +1,60 @@
-{% extends 'base.html' %}
+{% extends "base.html" %}
 {% block content %}
-<h3>My Listings</h3>
-<a class="btn btn-primary mb-3" href="{{ url_for('add_product') }}">+ Add</a>
-<div class="list-group">
-  {% for p in products %}
-    <div class="list-group-item d-flex justify-content-between align-items-center">
-      <div>
-        <strong>{{ p.title }}</strong> — ₹ {{ p.price }} <br>
-        <small>{{ p.category }}</small>
-      </div>
-      <div>
-        <a class="btn btn-sm btn-outline-primary" href="{{ url_for('edit_product', pid=p.id) }}">Edit</a>
-        <form method="post" action="{{ url_for('delete_product', pid=p.id) }}" style="display:inline;">
-          <button class="btn btn-sm btn-outline-danger">Delete</button>
-        </form>
-      </div>
-    </div>
-  {% else %}
-    <p>No listings yet.</p>
-  {% endfor %}
-</div>
+<h2>My Listings</h2>
+
+{% if products_with_orders %}
+    <table class="table table-striped table-bordered">
+        <thead>
+            <tr>
+                <th>Product</th>
+                <th>Category</th>
+                <th>Price</th>
+                <th>Listed On</th>
+                <th>Actions</th>
+                <th>Orders</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for item in products_with_orders %}
+            <tr>
+                <td>{{ item.product.title }}</td>
+                <td>{{ item.product.category }}</td>
+                <td>${{ item.product.price }}</td>
+                <td>{{ item.product.created_at.strftime('%Y-%m-%d') }}</td>
+                <td>
+                    <a href="{{ url_for('edit_product', pid=item.product.id) }}" class="btn btn-sm btn-primary mb-1">Edit</a>
+                    <form action="{{ url_for('delete_product', pid=item.product.id) }}" method="POST" style="display:inline;">
+                        <button type="submit" class="btn btn-sm btn-danger mb-1">Delete</button>
+                    </form>
+                </td>
+                <td>
+                    {% if item.orders %}
+                        <ul class="list-unstyled mb-0">
+                        {% for order in item.orders %}
+                            <li>
+                                <strong>{{ order.user.username }}</strong> - {{ order.address }} <br>
+                                Purchased: {{ order.purchased_at.strftime('%Y-%m-%d') }} | Status: {{ order.status }}
+                                <form action="{{ url_for('update_order_status', purchase_id=order.id) }}" method="POST" class="d-inline mt-1">
+                                    <select name="status" class="form-select form-select-sm d-inline w-auto">
+                                        <option value="Pending" {% if order.status=='Pending' %}selected{% endif %}>Pending</option>
+                                        <option value="Shipped" {% if order.status=='Shipped' %}selected{% endif %}>Shipped</option>
+                                        <option value="Delivered" {% if order.status=='Delivered' %}selected{% endif %}>Delivered</option>
+                                        <option value="Cancelled" {% if order.status=='Cancelled' %}selected{% endif %}>Cancelled</option>
+                                    </select>
+                                    <button type="submit" class="btn btn-sm btn-secondary">Update</button>
+                                </form>
+                            </li>
+                        {% endfor %}
+                        </ul>
+                    {% else %}
+                        <span>No orders yet</span>
+                    {% endif %}
+                </td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+{% else %}
+    <p>You haven't listed any products yet.</p>
+{% endif %}
 {% endblock %}

@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>My Orders</h2>
+
+{% if purchases %}
+<table class="table table-striped">
+    <thead>
+        <tr>
+            <th>Product</th>
+            <th>Quantity</th>
+            <th>Price</th>
+            <th>Status</th>
+            <th>Purchased At</th>
+            <th>Address</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for order in purchases %}
+        <tr>
+            <td><a href="{{ url_for('product_detail', pid=order.product.id) }}">{{ order.product.title }}</a></td>
+            <td>1</td> <!-- Assuming one product per purchase -->
+            <td>${{ order.product.price }}</td>
+            <td>{{ order.status }}</td>
+            <td>{{ order.purchased_at.strftime('%Y-%m-%d %H:%M') }}</td>
+            <td>{{ order.address }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p>You have not placed any orders yet.</p>
+{% endif %}
+
+{% endblock %}

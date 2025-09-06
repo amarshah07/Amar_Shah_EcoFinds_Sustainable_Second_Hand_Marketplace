@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Checkout</h2>
+
+{% if items %}
+    <ul>
+    {% for item in items %}
+        <li>{{ item.product.title }} - {{ item.quantity }} × ${{ item.product.price }}</li>
+    {% endfor %}
+    </ul>
+
+    <form method="POST">
+        <div>
+            <label for="address">Delivery Address</label>
+            <textarea name="address" required></textarea>
+        </div>
+        <button type="submit">Place Order</button>
+    </form>
+{% else %}
+    <p>Your cart is empty.</p>
+{% endif %}
+{% endblock %}

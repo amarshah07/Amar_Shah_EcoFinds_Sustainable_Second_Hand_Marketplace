@@ -128,7 +128,15 @@ def product_detail(pid):
 @login_required
 def my_listings():
     products = Product.query.filter_by(user_id=session['user_id']).order_by(Product.created_at.desc()).all()
-    return render_template('my_listings.html', products=products)
+    
+    # Fetch orders for each product
+    products_with_orders = []
+    for p in products:
+        orders = Purchase.query.filter_by(product_id=p.id).order_by(Purchase.purchased_at.desc()).all()
+        products_with_orders.append({'product': p, 'orders': orders})
+    
+    return render_template('my_listings.html', products_with_orders=products_with_orders)
+
 
 @app.route('/product/<int:pid>/edit', methods=['GET','POST'])
 @login_required
@@ -187,17 +195,40 @@ def remove_cart(cid):
     db.session.delete(it); db.session.commit()
     flash('Removed from cart', 'info'); return redirect(url_for('view_cart'))
 
-@app.route('/checkout', methods=['POST'])
+@app.route('/checkout', methods=['GET', 'POST'])
 @login_required
 def checkout():
-    items = Cart.query.filter_by(user_id=session['user_id']).all()
-    for it in items:
-        p = Purchase(user_id=session['user_id'], product_id=it.product_id)
-        db.session.add(p)
-        db.session.delete(it)
-    db.session.commit()
-    flash('Checkout complete. Purchases recorded.', 'success')
-    return redirect(url_for('purchases'))
+    cart_items = Cart.query.filter_by(user_id=session['user_id']).all()
+
+    if not cart_items:
+        flash('Your cart is empty!', 'warning')
+        return redirect(url_for('feed'))
+
+    if request.method == 'POST':
+        address = request.form.get('address')
+        if not address:
+            flash('Address is required!', 'danger')
+            return redirect(url_for('checkout'))
+
+        # create purchase record for each cart item
+        for item in cart_items:
+            purchase = Purchase(
+                user_id=session['user_id'],
+                product_id=item.product_id,
+                address=address
+            )
+            db.session.add(purchase)
+
+        # clear cart after checkout
+        Cart.query.filter_by(user_id=session['user_id']).delete()
+        db.session.commit()
+
+        flash('Order placed successfully!', 'success')
+        return redirect(url_for('purchases'))
+
+    return render_template('checkout.html', items=cart_items)
+
+
 
 @app.route('/purchases')
 @login_required
@@ -209,15 +240,52 @@ def purchases():
 @login_required
 def dashboard():
     user = User.query.get_or_404(session['user_id'])
+    
+    # Fetch all purchases of this user, newest first
+    orders = Purchase.query.filter_by(user_id=user.id).order_by(Purchase.purchased_at.desc()).all()
+
     if request.method == 'POST':
         username = request.form.get('username','').strip()
         if not username:
-            flash('Username cannot be empty', 'danger'); return redirect(url_for('dashboard'))
+            flash('Username cannot be empty', 'danger')
+            return redirect(url_for('dashboard'))
         user.username = username
         db.session.commit()
         flash('Profile updated', 'success')
         return redirect(url_for('dashboard'))
-    return render_template('dashboard.html', user=user)
+
+    return render_template('dashboard.html', user=user, orders=orders)
+
+
+@app.route('/order/<int:purchase_id>/update', methods=['POST'])
+@login_required
+def update_order_status(purchase_id):
+    purchase = Purchase.query.get_or_404(purchase_id)
+    
+    # Only the owner of the product can update the order
+    if purchase.product.user_id != session['user_id']:
+        flash('Not allowed.', 'danger')
+        return redirect(url_for('my_listings'))
+    
+    status = request.form.get('status')
+    if status:
+        purchase.status = status  # we need to add this field in Purchase model
+        db.session.commit()
+        flash('Order status updated.', 'success')
+    
+    return redirect(url_for('my_listings'))
+
+
+@app.route('/my-orders')
+@login_required
+def my_orders():
+    # Fetch all purchases for the logged-in user, newest first
+    purchases = Purchase.query.filter_by(user_id=session['user_id']).order_by(Purchase.purchased_at.desc()).all()
+    return render_template('my_orders.html', purchases=purchases)
+
+
+
+
 
 if __name__ == '__main__':
     app.run(debug=True)

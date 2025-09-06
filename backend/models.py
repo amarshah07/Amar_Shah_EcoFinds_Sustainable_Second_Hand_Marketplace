@@ -40,3 +40,7 @@ class Purchase(db.Model):
     product_id = db.Column(db.Integer, db.ForeignKey('products.id'), nullable=False)
     purchased_at = db.Column(db.DateTime, default=datetime.utcnow)
     product = db.relationship('Product', backref='purchases')
+    address = db.Column(db.String(255), nullable=False)
+    status = db.Column(db.String(20), default='Pending')  # Pending, Shipped, Delivered, Cancelled
+
+
